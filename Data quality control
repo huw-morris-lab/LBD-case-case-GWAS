@@ -1,0 +1,188 @@
+## For AMP-PD
+# Keeping LBD cases and updating sex
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/genetic_data/all_chrs_merged_formatted \
+--keep /home/jupyter/bin/AMP_NOV2022/AMP_ID.txt \
+--update-sex /home/jupyter/bin/AMP_NOV2022/AMP_SEX.txt \
+--make-pgen \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex
+
+# Removing variants with poor call rates
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex\
+--geno 0.05 \
+--make-pgen \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno 
+
+# Removing samples with poor call rates
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno \
+--mind 0.05 \
+--make-pgen \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind 
+
+# Removing het outliers
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
+--geno 0.01 \
+--maf 0.05 \
+--indep-pairwise 50 5 0.5 \
+--out /home/jupyter/bin/AMP_NOV2022/pruning 
+
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
+--extract /home/jupyter/bin/AMP_NOV2022/pruning.prune.in \
+--make-pgen \
+--out /home/jupyter/bin/AMP_NOV2022/pruned_data 
+
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/pruned_data \
+--het \
+--out /home/jupyter/bin/AMP_NOV2022/prunedHet 
+
+
+awk '{if ($6 <= -0.15) print $0 }' prunedHet.het > outliers1.txt
+awk '{if ($6 >= 0.15) print $0 }' prunedHet.het > outliers2.txt
+cat outliers1.txt outliers2.txt > HETEROZYGOSITY_OUTLIERS.txt
+
+cut -f 1,2 HETEROZYGOSITY_OUTLIERS.txt > all_outliers.txt
+
+/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
+--remove /home/jupyter/bin/AMP_NOV2022/all_outliers.txt \
+--make-pgen \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind.het
+
+# Ancestry check
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind.het \
+--rm-dup exclude-all \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/cohortPremerge
+
+# Change allele coding to match HapMap and extract only HapMap SNPs
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/cohortPremerge \
+--alt1-allele /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim 5 2 \
+--update-map /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim 4 2 \
+--extract /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/cohortToMergeHapmap
+
+/home/jupyter/bin/plink --bfile /home/jupyter/bin/AMP_NOV2022/cohortToMergeHapmap \
+--bmerge /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.excluded_snps \
+--out /home/jupyter/bin/AMP_NOV2022/trymerge
+
+# Filter the merged file
+/home/jupyter/bin/plink --bfile /home/jupyter/bin/AMP_NOV2022/trymerge \
+--geno 0.01 \
+--hwe 1E-10 \
+--maf 0.01 \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered
+
+# Prune SNPs
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered \
+--indep-pairwise 50 5 0.01 \
+--out /home/jupyter/bin/AMP_NOV2022/pruning 
+
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered\
+--extract /home/jupyter/bin/AMP_NOV2022/pruning.prune.in \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered.pruned
+
+Run PCA on merged pruned file
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered.pruned \
+--pca \
+--out /home/jupyter/bin/AMP_NOV2022/pca 
+
+
+# Infer ancestry
+dfpop = df.pivot_table(index='Continent', values=['PC1', 'PC2'], aggfunc=['mean', 'std'])
+
+# Get the threshold table of mean +/- 3SD
+def funcThres(x):
+    lwl = x['mean'] - 3 * x['std']
+    hgl = x['mean'] + 3 * x['std']
+    return pd.Series({'lwl':lwl, 'hgl':hgl})
+thres = dfpop.apply(funcThres, axis=1)
+
+# function to infer ancestry
+def funcInfPop(x):
+    if x.Continent != '"STUDY"':
+        InfPop = 'REF'
+    else:
+        InfPop = 'ADMIX'
+        for continent in ['EUROPE', 'ASIA', 'AFRICA']:
+            if (thres.loc[continent, 'lwl']['PC1'] < x.PC1) & \
+              (x.PC1 < thres.loc[continent, 'hgl']['PC1']) & \
+              (thres.loc[continent, 'lwl']['PC2'] < x.PC2) & \
+              (x.PC2 < thres.loc[continent, 'hgl']['PC2']):
+                    InfPop = continent
+    return InfPop
+df['InfPop'] = df.apply(funcInfPop, axis=1)
+
+# Europeans
+dfpca_euro = df[(df.Continent=='EUROPE') | (df.InfPop=='EUROPE')]
+colors = ['pink', 'black', 'blue', 'purple', 'orange', 'green', 'red']
+fig, ax = plt.subplots(1, 1)
+for i, (j, group) in enumerate(dfpca_euro.groupby('Population')):
+    if j=='"STUDY"':
+        ax.scatter(x=group.PC1, y=group.PC2, color=colors[i], label=j, s = 10, alpha = 1)
+    else:
+        ax.scatter(x=group.PC1, y=group.PC2, color=colors[i], label=j, s = 10, alpha = 1)
+
+# Create ancestry files
+df.loc[df.InfPop!='REF', ['#FID', 'IID', 'InfPop'] + [f'PC{i+1}' for i in range(10)]].to_csv('/home/jupyter/bin/AMP_NOV2022/genetic_ancestry_all_pca.csv', index=False)
+for continent in ['EUROPE', 'ASIA', 'AFRICA', 'ADMIX']:
+    t = df.loc[df.InfPop==continent, ['#FID', 'IID']]
+    print(t.shape)
+    t.to_csv(f'/home/jupyter/bin/AMP_NOV2022/genetic_ancestry_{continent}.txt', index=False, sep='\t')
+
+# Keep Europeans only
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/cohortPremerge.auto_snps \
+--keep /home/jupyter/bin/AMP_NOV2022/genetic_ancestry_EUROPE.txt \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_EURO
+
+# Relatedness check
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
+--make-king-table \
+--king-table-filter 0.088 \
+--out /home/jupyter/bin/AMP_NOV2022/king_all_chr 
+
+d = pd.read_csv(f'/home/jupyter/bin/AMP_NOV2022/king_all_chr.kin0', sep='\t')
+
+r0 = sum(d.KINSHIP>0.354)
+r1 = sum(d.KINSHIP>0.177)
+r2 = sum(d.KINSHIP>0.088)
+
+print('Number of monozygotes/twin pairs:', r0)
+print('Number of 1st degree relative pairs:', r1-r0)
+print('Number of 2nd degree relative pairs:', r2-r1)
+
+awk '{print $1 , $2}' king_all_chr.kin0 > IBD_remove.txt
+
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
+--remove /home/jupyter/bin/AMP_NOV2022/IBD_remove.txt \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD
+
+# Remove variants with HWE p-value < 1e-8
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD\
+--hwe 1E-8 \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD.hwe
+
+# Remove maf 
+/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD.hwe \
+--autosome \
+--maf 0.001 \
+--make-bed \
+--out /home/jupyter/bin/AMP_NOV2022/AMP_QC 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
