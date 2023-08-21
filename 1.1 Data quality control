@@ -177,7 +177,6 @@ plink2 --bfile $DIR/AMP_EURO_IBD.hwe \
 ## For PROBAND and Oxford Discovery
 FILENAME= $DIR/PROBAND.sex
  
-
 # outliers stored here -> all_outliers.txt
 # all heterozygosity is stored here -> HETEROZYGOSITY_DATA.txt
 
@@ -191,7 +190,6 @@ cat outliers1.txt outliers2.txt > HETEROZYGOSITY_OUTLIERS.txt
 
 cut -f 1,2 HETEROZYGOSITY_OUTLIERS.txt > all_outliers.txt
 
-mv prunedHet.het HETEROZYGOSITY_DATA.txt
 
 plink1.9 --bfile $FILENAME --remove all_outliers.txt --make-bed --out after_heterozyg
 
@@ -238,35 +236,28 @@ cat new_samples2.txt euro.txt asiao.txt afrio.txt > pca.eigenvec2
 R < PCA_in_R.R --no-save  
 plink1.9 --bfile after_gender --keep PCA_filtered_europeans.txt --make-bed --out after_gender_heterozyg_hapmap
 cat PCA_filtered_asians.txt PCA_filtered_africans.txt PCA_filtered_mixed_race.txt > hapmap_outliers33.txt
-mv hapmap_outliers33.txt log
 
 
 # this creates several plots and lists based on genetic ancestry
 
 ## No relatedness closer than cousin -> Pihat threshold of 0.125 
-# this is a optional step we usually do it but its upto you
-# also can multithread when running in linux or with better version of GCTA --threads ...
 
-/data/kronos/kronos/NGS_Software/gcta_1.93.0beta/gcta64 --bfile after_gender_heterozyg_hapmap --make-grm --out GRM_matrix --autosome --maf 0.05 --thread-num $THREADS
-/data/kronos/kronos/NGS_Software/gcta_1.93.0beta/gcta64 --grm-cutoff 0.125 --grm GRM_matrix --out GRM_matrix_0125 --make-grm
+gcta64 --bfile after_gender_heterozyg_hapmap --make-grm --out GRM_matrix --autosome --maf 0.05 --thread-num $THREADS
+gcta64 --grm-cutoff 0.125 --grm GRM_matrix --out GRM_matrix_0125 --make-grm
 awk '{print $1,$2,$6}' after_gender_heterozyg_hapmap.fam > pheno.txt
 plink1.9 --bfile after_gender_heterozyg_hapmap --keep GRM_matrix_0125.grm.id --make-bed --out after_gender_heterozyg_hapmap_pihat
 
 
 
-cut -f 1,2 after_gender_heterozyg_hapmap.fam > log/IDs_before_relatedness_filter.txt
-cut -f 1,2 after_gender_heterozyg_hapmap_pihat.fam > log/IDs_after_relatedness_filter.txt
+cut -f 1,2 after_gender_heterozyg_hapmap.fam > IDs_before_relatedness_filter.txt
+cut -f 1,2 after_gender_heterozyg_hapmap_pihat.fam > IDs_after_relatedness_filter.txt
 
 
 
-# Optional hardy Weinberg SNP from controls
+# Hardy Weinberg SNP from controls
 
 plink1.9 --bfile after_gender_heterozyg_hapmap_pihat  --hwe 1E-8 --write-snplist
 plink1.9 --bfile after_gender_heterozyg_hapmap_pihat --extract plink.snplist --make-bed --out after_gender_heterozyg_pihat_hapmap_mind_missing123
-
-mv after_gender_heterozyg_pihat_hapmap_mind_missing123.bim data_here/FILTERED.bim
-mv after_gender_heterozyg_pihat_hapmap_mind_missing123.bed data_here/FILTERED.bed
-mv after_gender_heterozyg_pihat_hapmap_mind_missing123.fam data_here/FILTERED.fam
 
 
 
