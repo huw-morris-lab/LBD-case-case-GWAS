@@ -17,3 +17,48 @@ plink --bfile $DIR/AMP_FINAL \
 --out $DIR/AMP_freq_JAN
 
 #META-ANLAYSIS
+
+##Download metal software
+#http://csg.sph.umich.edu/abecasis/Metal/download/
+#Downloaded to $DIR/software
+#tar xvzf Linux-metal.tar.gz 
+
+#Run script using:
+generic-metal/metal metaanalysis_script.txt
+
+
+SCHEME  STDERR
+AVERAGEFREQ ON
+MINMAXFREQ ON
+CUSTOMVARIABLE TotalSampleSize
+LABEL TotalSampleSize as N 
+
+# LOAD INPUT FILES
+
+# Enable Genomic control correction
+GENOMICCONTROL ON
+# === DESCRIBE AND PROCESS THE FIRST INPUT FILE ===
+MARKER SNP
+ALLELE noneffect_allele effect_allele
+FREQ   MAF
+EFFECT beta
+STDERR se
+PVALUE Pvalue
+WEIGHT N 
+PROCESS /data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_JAN23/2-Metaanalysis/AMP_JAN_METAL.tab
+
+# === DESCRIBE AND PROCESS THE SECOND INPUT FILE ===
+MARKER SNP
+ALLELE noneffect_allele effect_allele
+FREQ   MAF
+EFFECT beta
+STDERR se
+PVALUE Pvalue
+WEIGHT N 
+PROCESS /data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_JAN23/2-Metaanalysis/PROX_JAN_METAL.tab
+
+
+OUTFILE LBAD .tbl
+ANALYZE HETEROGENEITY RANDOM
+
+QUIT
