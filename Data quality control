@@ -1,38 +1,40 @@
 ## For AMP-PD
+DIR=path/to/directory/of/cohort/binary/files
+
 # Keeping LBD cases and updating sex
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/genetic_data/all_chrs_merged_formatted \
---keep /home/jupyter/bin/AMP_NOV2022/AMP_ID.txt \
---update-sex /home/jupyter/bin/AMP_NOV2022/AMP_SEX.txt \
+plink2 --pfile $DIR/all_chrs_merged_formatted \
+--keep $DIR/AMP_ID.txt \
+--update-sex $DIR/AMP_SEX.txt \
 --make-pgen \
---out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex
+--out $DIR/AMP_PD.sex
 
 # Removing variants with poor call rates
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex\
+plink2 --pfile $DIR/AMP_PD.sex\
 --geno 0.05 \
 --make-pgen \
---out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno 
+--out $DIR/AMP_PD.sex.geno 
 
 # Removing samples with poor call rates
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno \
+plink2 --pfile $DIR/AMP_PD.sex.geno \
 --mind 0.05 \
 --make-pgen \
---out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind 
+--out $DIR/AMP_PD.sex.geno.mind 
 
 # Removing het outliers
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
+plink2 --pfile $DIR/AMP_PD.sex.geno.mind \
 --geno 0.01 \
 --maf 0.05 \
 --indep-pairwise 50 5 0.5 \
---out /home/jupyter/bin/AMP_NOV2022/pruning 
+--out $DIR/pruning 
 
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
---extract /home/jupyter/bin/AMP_NOV2022/pruning.prune.in \
+plink2 --pfile $DIR/AMP_PD.sex.geno.mind \
+--extract $DIR/pruning.prune.in \
 --make-pgen \
---out /home/jupyter/bin/AMP_NOV2022/pruned_data 
+--out $DIR/pruned_data 
 
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/pruned_data \
+plink2 --pfile $DIR/pruned_data \
 --het \
---out /home/jupyter/bin/AMP_NOV2022/prunedHet 
+--out $DIR/prunedHet 
 
 
 awk '{if ($6 <= -0.15) print $0 }' prunedHet.het > outliers1.txt
@@ -41,51 +43,51 @@ cat outliers1.txt outliers2.txt > HETEROZYGOSITY_OUTLIERS.txt
 
 cut -f 1,2 HETEROZYGOSITY_OUTLIERS.txt > all_outliers.txt
 
-/home/jupyter/bin/plink2 --pfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind \
---remove /home/jupyter/bin/AMP_NOV2022/all_outliers.txt \
+plink2 --pfile $DIR/AMP_PD.sex.geno.mind \
+--remove $DIR/all_outliers.txt \
 --make-pgen \
---out /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind.het
+--out $DIR/AMP_PD.sex.geno.mind.het
 
 # Ancestry check
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_PD.sex.geno.mind.het \
+plink2 --bfile $DIR/AMP_PD.sex.geno.mind.het \
 --rm-dup exclude-all \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/cohortPremerge
+--out $DIR/cohortPremerge
 
 # Change allele coding to match HapMap and extract only HapMap SNPs
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/cohortPremerge \
---alt1-allele /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim 5 2 \
---update-map /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim 4 2 \
---extract /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.updated_names.palindromes_excluded.excluded_snps.bim \
+plink2 --bfile $DIR/cohortPremerge \
+--alt1-allele $DIR/HAPMAP_GRCh38.excluded_snps.bim 5 2 \
+--update-map $DIR/HAPMAP_GRCh38.excluded_snps.bim 4 2 \
+--extract $DIR/HAPMAP_GRCh38.excluded_snps.bim \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/cohortToMergeHapmap
+--out $DIR/cohortToMergeHapmap
 
-/home/jupyter/bin/plink --bfile /home/jupyter/bin/AMP_NOV2022/cohortToMergeHapmap \
---bmerge /home/jupyter/bin/genetic_data/HAPMAP_GRCh38.excluded_snps \
---out /home/jupyter/bin/AMP_NOV2022/trymerge
+plink --bfile $DIR/cohortToMergeHapmap \
+--bmerge $DIR/HAPMAP_GRCh38.excluded_snps \
+--out $DIR/trymerge
 
 # Filter the merged file
-/home/jupyter/bin/plink --bfile /home/jupyter/bin/AMP_NOV2022/trymerge \
+plink --bfile $DIR/trymerge \
 --geno 0.01 \
 --hwe 1E-10 \
 --maf 0.01 \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered
+--out $DIR/AMP_HapMap_merged.filtered
 
 # Prune SNPs
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered \
+plink2 --bfile $DIR/AMP_HapMap_merged.filtered \
 --indep-pairwise 50 5 0.01 \
---out /home/jupyter/bin/AMP_NOV2022/pruning 
+--out $DIR/pruning 
 
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered\
---extract /home/jupyter/bin/AMP_NOV2022/pruning.prune.in \
+plink2 --bfile $DIR/AMP_HapMap_merged.filtered \
+--extract $DIR/pruning.prune.in \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered.pruned
+--out $DIR/AMP_HapMap_merged.filtered.pruned
 
 Run PCA on merged pruned file
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_HapMap_merged.filtered.pruned \
+plink2 --bfile $DIR/AMP_HapMap_merged.filtered.pruned \
 --pca \
---out /home/jupyter/bin/AMP_NOV2022/pca 
+--out $DIR/pca 
 
 
 # Infer ancestry
@@ -131,18 +133,18 @@ for continent in ['EUROPE', 'ASIA', 'AFRICA', 'ADMIX']:
     t.to_csv(f'/home/jupyter/bin/AMP_NOV2022/genetic_ancestry_{continent}.txt', index=False, sep='\t')
 
 # Keep Europeans only
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/cohortPremerge.auto_snps \
---keep /home/jupyter/bin/AMP_NOV2022/genetic_ancestry_EUROPE.txt \
+plink2 --bfile $DIR/cohortPremerge.auto_snps \
+--keep $DIR/AMP_NOV2022/genetic_ancestry_EUROPE.txt \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_EURO
+--out $DIR/AMP_EURO
 
 # Relatedness check
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
+plink2 --bfile $DIR/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
 --make-king-table \
 --king-table-filter 0.088 \
---out /home/jupyter/bin/AMP_NOV2022/king_all_chr 
+--out $DIR/king_all_chr 
 
-d = pd.read_csv(f'/home/jupyter/bin/AMP_NOV2022/king_all_chr.kin0', sep='\t')
+d = pd.read_csv(f'$DIR/king_all_chr.kin0', sep='\t')
 
 r0 = sum(d.KINSHIP>0.354)
 r1 = sum(d.KINSHIP>0.177)
@@ -154,23 +156,139 @@ print('Number of 2nd degree relative pairs:', r2-r1)
 
 awk '{print $1 , $2}' king_all_chr.kin0 > IBD_remove.txt
 
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
---remove /home/jupyter/bin/AMP_NOV2022/IBD_remove.txt \
+plink2 --bfile $DIR/AMP_EURO.auto_snps.mac2.geno01_hwe0001 \
+--remove $DIR/IBD_remove.txt \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD
+--out $DIR/AMP_EURO_IBD
 
 # Remove variants with HWE p-value < 1e-8
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD\
+plink2 --bfile $DIR/AMP_EURO_IBD\
 --hwe 1E-8 \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD.hwe
+--out $DIR/AMP_EURO_IBD.hwe
 
 # Remove maf 
-/home/jupyter/bin/plink2 --bfile /home/jupyter/bin/AMP_NOV2022/AMP_EURO_IBD.hwe \
+plink2 --bfile $DIR/AMP_EURO_IBD.hwe \
 --autosome \
 --maf 0.001 \
 --make-bed \
---out /home/jupyter/bin/AMP_NOV2022/AMP_QC 
+--out $DIR/AMP_QC 
+
+## For PROBAND and Oxford Discovery
+FILENAME= $DIR/PROBAND.sex
+ 
+
+# outliers stored here -> all_outliers.txt
+# all heterozygosity is stored here -> HETEROZYGOSITY_DATA.txt
+
+plink1.9 --bfile $FILENAME --geno 0.01 --maf 0.05 --indep-pairwise 50 5 0.5 --out pruning
+plink1.9 --bfile $FILENAME --extract pruning.prune.in --make-bed --out pruned_data
+plink1.9 --bfile pruned_data --het --out prunedHet
+
+awk '{if ($6 <= -0.15) print $0 }' prunedHet.het > outliers1.txt
+awk '{if ($6 >= 0.15) print $0 }' prunedHet.het > outliers2.txt
+cat outliers1.txt outliers2.txt > HETEROZYGOSITY_OUTLIERS.txt
+
+cut -f 1,2 HETEROZYGOSITY_OUTLIERS.txt > all_outliers.txt
+
+mv prunedHet.het HETEROZYGOSITY_DATA.txt
+
+plink1.9 --bfile $FILENAME --remove all_outliers.txt --make-bed --out after_heterozyg
+
+plink1.9 --bfile after_heterozyg --mind 0.05 --make-bed --out after_heterozyg_call_rate
+
+plink1.9 --bfile after_heterozyg_call_rate --check-sex 0.25 0.75 --maf 0.05 --out gender_check1
+plink1.9 --bfile after_heterozyg_call_rate --chr 23 --from-bp 2699520 --to-bp 154931043 --maf 0.05 --geno 0.05 --hwe 1E-5 --check-sex  0.25 0.75 --out gender_check2 
+
+touch samples_to_remove.txt
+grep "PROBLEM" gender_check1.sexcheck > problems1.txt
+grep "PROBLEM" gender_check2.sexcheck > problems2.txt
+cat problems1.txt problems2.txt > GENDER_FAILURES.txt
+
+cut -f 1,2 GENDER_FAILURES.txt > samples_to_remove.txt
+
+plink1.9 --bfile after_heterozyg_call_rate --remove samples_to_remove.txt --make-bed --out after_gender
+
+plink1.9 --bfile after_gender --bmerge HapMap3_hg19_continents --out hapmap3_bin_snplis --make-bed
+
+plink1.9 --bfile after_gender --flip hapmap3_bin_snplis-merge.missnp --make-bed --out after_gender3
+
+plink1.9 --bfile after_gender3 --bmerge HapMap3_hg19_continents --out hapmap3_bin_snplis --make-bed
+
+plink1.9 --bfile after_gender3 --exclude hapmap3_bin_snplis-merge.missnp --out after_gender4 --make-bed
+
+plink1.9 --bfile after_gender4 --bmerge HapMap3_hg19_continents --out hapmap3_bin_snplis --make-bed
+
+plink1.9 --bfile hapmap3_bin_snplis --geno 0.05 --out pca --make-bed --pca --threads $THREADS
+
+
+grep "EUROPE" pca.eigenvec > eur.txt
+grep "ASIA" pca.eigenvec > asia.txt
+grep "AFRICA" pca.eigenvec > afri.txt
+grep -v -f eur.txt pca.eigenvec | grep -v -f asia.txt | grep -v -f afri.txt > new_samples.txt
+cut -d " " -f 3 after_gender.fam > new_samples_add.txt
+paste new_samples_add.txt new_samples.txt > new_samples2.txt
+paste eur_add.txt eur.txt > euro.txt
+paste asia_add.txt asia.txt > asiao.txt
+paste afri_add.txt afri.txt > afrio.txt
+
+cat new_samples2.txt euro.txt asiao.txt afrio.txt > pca.eigenvec2
+
+# R script for PCA plotting and filtering
+R < PCA_in_R.R --no-save  
+plink1.9 --bfile after_gender --keep PCA_filtered_europeans.txt --make-bed --out after_gender_heterozyg_hapmap
+cat PCA_filtered_asians.txt PCA_filtered_africans.txt PCA_filtered_mixed_race.txt > hapmap_outliers33.txt
+mv hapmap_outliers33.txt log
+
+
+# this creates several plots and lists based on genetic ancestry
+
+## No relatedness closer than cousin -> Pihat threshold of 0.125 
+# this is a optional step we usually do it but its upto you
+# also can multithread when running in linux or with better version of GCTA --threads ...
+
+/data/kronos/kronos/NGS_Software/gcta_1.93.0beta/gcta64 --bfile after_gender_heterozyg_hapmap --make-grm --out GRM_matrix --autosome --maf 0.05 --thread-num $THREADS
+/data/kronos/kronos/NGS_Software/gcta_1.93.0beta/gcta64 --grm-cutoff 0.125 --grm GRM_matrix --out GRM_matrix_0125 --make-grm
+awk '{print $1,$2,$6}' after_gender_heterozyg_hapmap.fam > pheno.txt
+plink1.9 --bfile after_gender_heterozyg_hapmap --keep GRM_matrix_0125.grm.id --make-bed --out after_gender_heterozyg_hapmap_pihat
+
+
+
+cut -f 1,2 after_gender_heterozyg_hapmap.fam > log/IDs_before_relatedness_filter.txt
+cut -f 1,2 after_gender_heterozyg_hapmap_pihat.fam > log/IDs_after_relatedness_filter.txt
+
+
+
+# Optional hardy Weinberg SNP from controls
+
+plink1.9 --bfile after_gender_heterozyg_hapmap_pihat  --hwe 1E-8 --write-snplist
+plink1.9 --bfile after_gender_heterozyg_hapmap_pihat --extract plink.snplist --make-bed --out after_gender_heterozyg_pihat_hapmap_mind_missing123
+
+mv after_gender_heterozyg_pihat_hapmap_mind_missing123.bim data_here/FILTERED.bim
+mv after_gender_heterozyg_pihat_hapmap_mind_missing123.bed data_here/FILTERED.bed
+mv after_gender_heterozyg_pihat_hapmap_mind_missing123.fam data_here/FILTERED.fam
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
