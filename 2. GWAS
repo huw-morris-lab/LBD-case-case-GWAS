@@ -1,0 +1,19 @@
+DIR=path/to/directory/of/cohort/binary/files
+COHORT=cohort_name
+
+#ANALYSIS
+
+
+plink2 --bfile $DIR/AMP_FINAL \
+--ci 0.95 \
+--covar $DIR/AMP_COVAR.txt \
+--covar-name SEX,AGE_DIAGNOSIS,PC1,PC2,PC3,PC4,PC5 \
+--covar-variance-standardize \
+--glm hide-covar \
+--out $DIR/AMP
+
+plink --bfile $DIR/AMP_FINAL \
+--freq \
+--out $DIR/AMP_freq_JAN
+
+#META-ANLAYSIS
