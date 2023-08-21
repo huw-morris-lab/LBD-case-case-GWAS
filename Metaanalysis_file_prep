@@ -1,0 +1,139 @@
+library(dplyr)
+library(data.table)
+library(tidyr)
+library(tidyverse)
+
+
+## Preparing files for meta-analysis
+
+# Importing the files for AMP
+
+AMP <- fread("AMP_JAN2023.PHENO1.glm.logistic.hybrid")
+AMP_freq <- fread("AMP_freq_JAN.frq")
+
+
+#Check some instances where the A1 is not the same as the ALT column 
+#Everything else is the non-effect allele
+AMP1 <- AMP %>%
+  mutate(effect = ifelse(A1 == ALT, ALT,
+                         ifelse(A1 == REF, REF, NA)),
+         noneffect = ifelse(A1 == ALT, REF,
+                            ifelse(A1 == REF, ALT, NA)))
+
+
+#Remove indels
+AMP1_noindels <- AMP1 %>%
+  filter(!is.na(effect)) %>%
+  filter(!is.na(noneffect))
+
+AMP_freq <- AMP_freq %>%
+  select(-CHR, -NCHROBS) %>%
+  rename(A1_freq = A1,
+         A2_freq = A2)
+
+#Merge with results file
+AMP1_noindels <- AMP1_noindels %>% 
+  rename(SNP = ID)
+
+AMP1_noindels_freq <- AMP1_noindels %>%
+  inner_join(AMP_freq, by = "SNP")
+
+#Check that alleles match (there should be no mismatches)
+AMP1_noindels_freq %>%
+  filter(A1!=A1_freq) %>%
+  summarise(count = n())
+
+#Remove A1 allele mismatches
+AMP1_noindels_freq <- AMP1_noindels_freq %>%
+  filter(A1==A1_freq)
+
+#Split SNP name into chr and position and alleles and create beta
+AMP1_noindels_freq <- AMP1_noindels_freq %>%
+  separate(SNP, into = c("chr", "bp", "REF1", "ALT1")) %>%
+  mutate(beta = log(OR))
+
+#Export with chr:pos for METAL
+AMP_export_METAL <- AMP1_noindels_freq %>%
+  mutate(SNP_new = paste(chr, bp, sep = ":")) %>%
+  select(SNP_new, effect, noneffect, beta,`LOG(OR)_SE`, P,OBS_CT, MAF) %>%
+  dplyr::rename(SNP = SNP_new,
+         effect_allele = effect,
+         noneffect_allele = noneffect,
+         se = `LOG(OR)_SE`,
+         N = OBS_CT,
+         Pvalue = P) %>%
+  select(SNP, effect_allele, noneffect_allele, beta, se, Pvalue, N, MAF)
+
+
+#Export for METAL
+fwrite(AMP_export_METAL, "AMP_JAN_METAL.tab", quote = F, sep = "\t", row.names = F)
+
+
+################################# PROX #################################
+
+# Importing the files for AMP
+
+PROX <- fread("PROX_JAN.PHENO1.glm.logistic.hybrid")
+PROX_freq <- fread("PROX_FINAL_freq.frq")
+
+
+#Check some instances where the A1 is not the same as the ALT column 
+#Everything else is the non-effect allele
+PROX1 <- PROX %>%
+  mutate(effect = ifelse(A1 == ALT, ALT,
+                         ifelse(A1 == REF, REF, NA)),
+         noneffect = ifelse(A1 == ALT, REF,
+                            ifelse(A1 == REF, ALT, NA)))
+
+
+#Remove indels
+PROX1_noindels <- PROX1 %>%
+  filter(!is.na(effect)) %>%
+  filter(!is.na(noneffect))
+
+PROX_freq <- PROX_freq %>%
+  select(-CHR, -NCHROBS) %>%
+  rename(A1_freq = A1,
+         A2_freq = A2)
+
+#Merge with results file
+PROX1_noindels <- PROX1_noindels %>% 
+  rename(SNP = ID)
+
+PROX1_noindels_freq <- PROX1_noindels %>%
+  inner_join(PROX_freq, by = "SNP")
+
+#Check that alleles match (there should be no mismatches)
+PROX1_noindels_freq %>%
+  filter(A1!=A1_freq) %>%
+  summarise(count = n())
+
+#Remove A1 allele mismatches
+PROX1_noindels_freq <- PROX1_noindels_freq %>%
+  filter(A1==A1_freq)
+
+#Split SNP name into chr and position and alleles and create beta
+PROX1_noindels_freq <- PROX1_noindels_freq %>%
+  separate(SNP, into = c("chr", "bp", "REF1", "ALT1")) %>%
+  mutate(beta = log(OR))
+
+#Export for METAL
+PROX_export_METAL <- PROX1_noindels_freq %>%
+  mutate(SNP_new = paste(chr, bp, sep = ":")) %>%
+  select(SNP_new, effect, noneffect, beta, `LOG(OR)_SE`, P,OBS_CT, MAF) %>%
+  dplyr::rename(SNP = SNP_new,
+                effect_allele = effect,
+                noneffect_allele = noneffect,
+                se = `LOG(OR)_SE`,
+                N = OBS_CT,
+                Pvalue = P) %>%
+  select(SNP, effect_allele, noneffect_allele, beta, se, Pvalue, N, MAF)
+
+
+#Export for METAL
+fwrite(PROX_export_METAL, "PROX_JAN_METAL.tab", quote = F, sep = "\t", row.names = F)
+
+
+
+q()
+n
