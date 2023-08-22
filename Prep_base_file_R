@@ -1,0 +1,52 @@
+library(dplyr)
+library(data.table)
+library(tidyr)
+library(tidyverse)
+
+# DLB
+# Renaming file columns
+
+DLB_SUMSTATS <- read.table("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/7-PRS/LBDpath.LBDclin.woPDD.ALLcontrols4K.unrelated.glm.noSpanningDels.snvCOVS.hwe1e-6.maf001cases.excludeCentromereFlank10kb.exclVDJ.GnomadTopmedOutliersRemoved.withValidation.FINAL_TIDY.txt",sep = "\t", header = T)
+
+#There are some markers missing variant ID (rsID) - just remove this column as we are not using it - used chr:pos instead
+DLB_SUMSTATS <- DLB_SUMSTATS %>%
+  dplyr::rename(CHR = CHROM,BP = POS, A2 = REF, SE = LOG.OR._SE) %>%
+  mutate(SNP = paste(CHR, BP, A2, A1, sep = ":")) %>%
+  filter(!is.na(A1_FREQ)) %>%
+  distinct(SNP, .keep_all = TRUE) %>%
+  select(P, CHR, BP, A1,A2,A1_FREQ,OR,SE,SNP)
+
+
+dim(DLB_SUMSTATS)
+
+fwrite(DLB_SUMSTATS,"DLB_SUMSTATS.tab", quote = F, sep = "\t", row.names = F, col.names = T)
+#Note that this includes rare variants but we will filter in PRSice
+
+# PD
+
+META5_SUMSTATS <- read.table("META5_no23andMe.hg38.tsv", sep = "\t", header = T)
+META5_SUMSTATS <- META5_SUMSTATS %>%
+  mutate(SNP = paste(CHR, BP, A2, A1, sep = ":")) %>%
+  filter(!is.na(freq)) %>%
+  distinct(SNP, .keep_all = TRUE)
+
+dim(META5_SUMSTATS)
+
+fwrite(META5_SUMSTATS,"META5_SUMSTATS.tab", quote = F, sep = "\t", row.names = F, col.names = T)
+
+# AD
+
+Kunkle_SUMSTATS <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_March22/PRS/Base_files/Kunkle_etal_Stage1_results.txt", header = T)
+Kunkle_SUMSTATS <- Kunkle_SUMSTATS %>%
+  dplyr::rename(CHR = Chromosome, BP = Position) %>%
+  mutate(SNP = paste(CHR, BP, Non_Effect_allele, Effect_allele, sep = ":")) %>%
+  distinct(SNP, .keep_all = TRUE) %>%
+  na.omit()
+
+dim(Kunkle_SUMSTATS)
+
+fwrite(Kunkle_SUMSTATS,"KUNKLE_SUMSTATS.tab", quote = F, sep = "\t", row.names = F, col.names = T)
+
+
+
+q("no")
