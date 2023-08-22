@@ -23,3 +23,8 @@ Rscript /home/jupyter/bin/PRSice.R \
          --bp BP \
          --target $DIR/${COHORT} \
          --out $DIR/${COHORT}/DX_PRS
+
+
+#Meta-analysing PRS on R
+Rscript PRS_meta_R.R --no-save
+
