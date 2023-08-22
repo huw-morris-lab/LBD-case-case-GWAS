@@ -1,7 +1,8 @@
 DIR=path/to/directory/of/cohort/binary/files
 COHORT=cohort_name
 
-##ANALYSIS
+##Genome-wide association analysis
+
 plink2 --bfile $DIR/${COHORT} \
 --ci 0.95 \
 --covar $DIR/${COHORT}_COVAR.txt \
@@ -10,19 +11,22 @@ plink2 --bfile $DIR/${COHORT} \
 --glm hide-covar \
 --out $DIR/${COHORT}
 
-##META-ANLAYSIS
+##Meta-analysis
 #Create frequency file
 
 plink --bfile $DIR/${COHORT} \
 --freq \
 --out $DIR/${COHORT}
 
+#Prepare summary statistics file for meta-analysis 
+Rscript --vanilla --no-save $DIR/Metaanalysis_file_prep_R
+
 ##Download metal software
 #http://csg.sph.umich.edu/abecasis/Metal/download/
 #Downloaded to $DIR/software
 #tar xvzf Linux-metal.tar.gz 
 
-#Run script using:
+#Run METAL script using:
 metal metaanalysis_script.txt
 
-
+#Upload on LOCUSZOOM 
