@@ -1,0 +1,368 @@
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(meta)
+library(ggpubr)
+library(cowplot)
+
+
+################### Loading datasets ################### 
+
+########### PD ########### 
+
+### PROX ###
+PROX_PD <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/PD_PRS_JAN.best", header = T)
+
+PROX_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/1-GWAS/PROX/PROX_COV_JAN2023.txt", header = T)
+
+## Create dataframe
+PROX_PD_merged <- merge(PROX_CLIN, PROX_PD, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(DIAGNOSIS == 1 ~ "PD", 
+                               DIAGNOSIS == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1)) # in relation to PDD 
+
+plyr::count(PROX_PD_merged$DIAGNOSIS)
+plyr::count(PROX_PD_merged$PHENO)
+
+# Normalise scores 
+
+PROX_PD_mergedmeanControls <- mean(PROX_PD_merged$PRS[PROX_PD_merged$PHENO == 0])
+PROX_PD_mergedsdControls <- sd(PROX_PD_merged$PRS[PROX_PD_merged$PHENO == 0])
+PROX_PD_merged$zSCORE <- (PROX_PD_merged$PRS - PROX_PD_mergedmeanControls)/PROX_PD_mergedsdControls
+
+PROX_PD1 <- ggplot(PROX_PD_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+PROX_PD2 <- PROX_PD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+PROX_PD3 <- PROX_PD2 + ylab("PD GRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+PROX_PD3
+
+
+# Regression
+PROX_PRS_PD <- glm(PHENO ~ zSCORE + SEX + + AGE + STUDY + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = PROX_PD_merged)
+summary(PROX_PRS_PD)
+
+
+### AMP ###
+AMP_PD <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/AMP_PD_PRS.best", header = T)
+AMP_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/GRS/AMP_COVAR_JAN.tab", header = T)
+
+AMP_PD_merged <- merge(AMP_CLIN, AMP_PD, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(PHENO == 1 ~ "PD",
+                           PHENO == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1))
+
+
+plyr::count(AMP_PD_merged$DIAGNOSIS)
+plyr::count(AMP_PD_merged$PHENO)
+
+# Normalise scores 
+
+AMP_PD_mergedmeanControls <- mean(AMP_PD_merged$PRS[AMP_PD_merged$PHENO == 0])
+AMP_PD_mergedsdControls <- sd(AMP_PD_merged$PRS[AMP_PD_merged$PHENO == 0])
+AMP_PD_merged$zSCORE <- (AMP_PD_merged$PRS - AMP_PD_mergedmeanControls)/AMP_PD_mergedsdControls
+
+# Plotting
+AMP_PD1 <- ggplot(AMP_PD_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+AMP_PD2 <- AMP_PD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+AMP_PD3 <- AMP_PD2 + ylab("PD GRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+AMP_PD3
+
+
+# Regression
+AMP_PRS_PD <- glm(PHENO ~ zSCORE + SEX + + AGE_DIAGNOSIS + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = AMP_PD_merged)
+summary(AMP_PRS_PD)
+
+
+################### Create table ###################
+PRS_PD_table <- as.data.frame(matrix(ncol = 7))
+names(PRS_PD_table) <- c("cohort","coefficient","se","pvalue","or","lower_ci","upper_ci")
+
+PRS_PD_table[,1] <- "PROX"
+PRS_PD_table[,2]<- summary(PROX_PRS_PD)$coefficients[2,1]
+PRS_PD_table[,3]<- summary(PROX_PRS_PD)$coefficients[2,2]
+PRS_PD_table[,4]<- summary(PROX_PRS_PD)$coefficients[2,4]
+PRS_PD_table[,5]<- exp(summary(PROX_PRS_PD)$coefficients[2,1])
+PRS_PD_table[,6]<- exp(summary(PROX_PRS_PD)$coefficients[2,1]-1.96*summary(PROX_PRS_PD)$coefficients[2,2])
+PRS_PD_table[,7]<- exp(summary(PROX_PRS_PD)$coefficients[2,1]+1.96*summary(PROX_PRS_PD)$coefficients[2,2])
+
+
+PRS_PD_table[2,1] <- "AMP"
+PRS_PD_table[2,2]<- summary(AMP_PRS_PD)$coefficients[2,1]
+PRS_PD_table[2,3]<- summary(AMP_PRS_PD)$coefficients[2,2]
+PRS_PD_table[2,4]<- summary(AMP_PRS_PD)$coefficients[2,4]
+PRS_PD_table[2,5]<- exp(summary(AMP_PRS_PD)$coefficients[2,1])
+PRS_PD_table[2,6]<- exp(summary(AMP_PRS_PD)$coefficients[2,1]-1.96*summary(AMP_PRS_PD)$coefficients[2,2])
+PRS_PD_table[2,7]<- exp(summary(AMP_PRS_PD)$coefficients[2,1]+1.96*summary(AMP_PRS_PD)$coefficients[2,2])
+
+
+################### Meta-analysis ################### 
+
+settings.meta("geneexpr")
+PD_meta_PRS <- metagen(TE = coefficient,
+                    seTE = se,
+                    studlab = cohort,
+                    data = PRS_PD_table,
+                    sm = "OR",
+                    fixed = TRUE,
+                    random = TRUE)
+
+
+PD_PRS_metaanalysis <- summary(PD_meta_PRS)
+PD_PRS_metaanalysis
+
+## Plotting all PD
+
+PD_MERGED <- full_join(AMP_PD_merged, PROX_PD_merged, by = c("FID", "IID", "PHENO", "zSCORE")) %>%
+  select(FID, IID, PHENO, zSCORE)
+
+ALL_PD1 <- ggplot(PD_MERGED, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+ALL_PD2 <- ALL_PD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal() 
+ALL_PD3 <- ALL_PD2 + ylab("PD PRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+ALL_PD3
+
+
+
+
+########### AD ########### 
+
+### PROX ###
+PROX_AD <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/AD_PRS_JAN.best", header = T)
+
+PROX_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/1-GWAS/PROX/PROX_COV_JAN2023.txt", header = T)
+
+## Create dataframe
+PROX_AD_merged <- merge(PROX_CLIN, PROX_AD, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(DIAGNOSIS == 1 ~ "PD", 
+                               DIAGNOSIS == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1))
+
+# Normalise scores 
+
+PROX_AD_mergedmeanControls <- mean(PROX_AD_merged$PRS[PROX_AD_merged$PHENO == 0])
+PROX_AD_mergedsdControls <- sd(PROX_AD_merged$PRS[PROX_AD_merged$PHENO == 0])
+PROX_AD_merged$zSCORE <- (PROX_AD_merged$PRS - PROX_AD_mergedmeanControls)/PROX_AD_mergedsdControls
+
+PROX_AD1 <- ggplot(PROX_AD_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+PROX_AD2 <- PROX_AD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+PROX_AD3 <- PROX_AD2 + ylab("AD PRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+PROX_AD3
+
+
+# Regression
+PROX_PRS_AD <- glm(PHENO ~ zSCORE + SEX + + AGE + STUDY + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = PROX_AD_merged)
+summary(PROX_PRS_AD)
+
+
+### AMP ###
+AMP_AD <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/AMP_AD_PRS.best", header = T)
+AMP_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/GRS/AMP_COVAR_JAN.tab", header = T)
+
+AMP_AD_merged <- merge(AMP_CLIN, AMP_AD, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(PHENO == 1 ~ "PD",
+                               PHENO == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1))
+
+
+# Normalise scores 
+
+AMP_AD_mergedmeanControls <- mean(AMP_AD_merged$PRS[AMP_AD_merged$PHENO == 0])
+AMP_AD_mergedsdControls <- sd(AMP_AD_merged$PRS[AMP_AD_merged$PHENO == 0])
+AMP_AD_merged$zSCORE <- (AMP_AD_merged$PRS - AMP_AD_mergedmeanControls)/AMP_AD_mergedsdControls
+
+# Plotting
+AMP_AD1 <- ggplot(AMP_AD_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+AMP_AD2 <- AMP_AD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+AMP_AD3 <- AMP_AD2 + ylab("AD GRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+AMP_AD3
+
+
+# Regression
+AMP_PRS_AD <- glm(PHENO ~ zSCORE + SEX + + AGE_DIAGNOSIS + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = AMP_AD_merged)
+summary(AMP_PRS_AD)
+
+
+################### Create table ###################
+PRS_AD_table <- as.data.frame(matrix(ncol = 7))
+names(PRS_AD_table) <- c("cohort","coefficient","se","pvalue","or","lower_ci","upper_ci")
+
+PRS_AD_table[,1] <- "PROX"
+PRS_AD_table[,2]<- summary(PROX_PRS_AD)$coefficients[2,1]
+PRS_AD_table[,3]<- summary(PROX_PRS_AD)$coefficients[2,2]
+PRS_AD_table[,4]<- summary(PROX_PRS_AD)$coefficients[2,4]
+PRS_AD_table[,5]<- exp(summary(PROX_PRS_AD)$coefficients[2,1])
+PRS_AD_table[,6]<- exp(summary(PROX_PRS_AD)$coefficients[2,1]-1.96*summary(PROX_PRS_AD)$coefficients[2,2])
+PRS_AD_table[,7]<- exp(summary(PROX_PRS_AD)$coefficients[2,1]+1.96*summary(PROX_PRS_AD)$coefficients[2,2])
+
+
+PRS_AD_table[2,1] <- "AMP"
+PRS_AD_table[2,2]<- summary(AMP_PRS_AD)$coefficients[2,1]
+PRS_AD_table[2,3]<- summary(AMP_PRS_AD)$coefficients[2,2]
+PRS_AD_table[2,4]<- summary(AMP_PRS_AD)$coefficients[2,4]
+PRS_AD_table[2,5]<- exp(summary(AMP_PRS_AD)$coefficients[2,1])
+PRS_AD_table[2,6]<- exp(summary(AMP_PRS_AD)$coefficients[2,1]-1.96*summary(AMP_PRS_AD)$coefficients[2,2])
+PRS_AD_table[2,7]<- exp(summary(AMP_PRS_AD)$coefficients[2,1]+1.96*summary(AMP_PRS_AD)$coefficients[2,2])
+
+
+################### Meta-analysis ################### 
+
+settings.meta("geneexpr")
+AD_meta_PRS <- metagen(TE = coefficient,
+                    seTE = se,
+                    studlab = cohort,
+                    data = PRS_AD_table,
+                    sm = "OR",
+                    fixed = TRUE,
+                    random = TRUE)
+
+
+AD_PRS_metaanalysis <- summary(AD_meta_PRS)
+AD_PRS_metaanalysis
+
+## Plotting all AD
+AD_MERGED <- full_join(AMP_AD_merged, PROX_AD_merged, by = c("FID", "IID", "PHENO", "zSCORE")) %>%
+  select(FID, IID, PHENO, zSCORE)
+
+ALL_AD1 <- ggplot(AD_MERGED, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+ALL_AD2 <- ALL_AD1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal() 
+ALL_AD3 <- ALL_AD2 + ylab("AD PRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+ALL_AD3
+
+
+
+########### DLB ########### 
+
+### PROX ###
+PROX_DLB <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/DLB_PRS_JAN.best", header = T)
+
+PROX_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/1-GWAS/PROX/PROX_COV_JAN2023.txt", header = T)
+
+## Create dataframe
+PROX_DLB_merged <- merge(PROX_CLIN, PROX_DLB, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(DIAGNOSIS == 1 ~ "PD", 
+                               DIAGNOSIS == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1))
+
+
+# Normalise scores 
+
+PROX_DLB_mergedmeanControls <- mean(PROX_DLB_merged$PRS[PROX_DLB_merged$PHENO == 0])
+PROX_DLB_mergedsdControls <- sd(PROX_DLB_merged$PRS[PROX_DLB_merged$PHENO == 0])
+PROX_DLB_merged$zSCORE <- (PROX_DLB_merged$PRS - PROX_DLB_mergedmeanControls)/PROX_DLB_mergedsdControls
+
+PROX_DLB1 <- ggplot(PROX_DLB_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+PROX_DLB2 <- PROX_DLB1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+PROX_DLB3 <- PROX_DLB2 + ylab("DLB PRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+PROX_DLB3
+
+
+# Regression
+PROX_PRS_DLB <- glm(PHENO ~ zSCORE + SEX + + AGE + STUDY + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = PROX_DLB_merged)
+summary(PROX_PRS_DLB)
+
+
+### AMP ###
+AMP_DLB <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/PRS/AMP_DLB_PRS.best", header = T)
+AMP_CLIN <- read.table("/Volumes/ritd-ag-project-rd00pi-hrmor79/RDS/Lesley/LBAD_JAN23/3-PRS/GRS/AMP_COVAR_JAN.tab", header = T)
+
+AMP_DLB_merged <- merge(AMP_CLIN, AMP_DLB, by = c("FID", "IID")) %>%
+  mutate(DIAGNOSIS = case_when(PHENO == 1 ~ "PD",
+                               PHENO == 2 ~ "PDD")) %>%
+  mutate(PHENO = case_when(DIAGNOSIS == "PD" ~ 0,
+                           DIAGNOSIS == "PDD" ~ 1))
+
+
+# Normalise scores 
+
+AMP_DLB_mergedmeanControls <- mean(AMP_DLB_merged$PRS[AMP_DLB_merged$PHENO == 0])
+AMP_DLB_mergedsdControls <- sd(AMP_DLB_merged$PRS[AMP_DLB_merged$PHENO == 0])
+AMP_DLB_merged$zSCORE <- (AMP_DLB_merged$PRS - AMP_DLB_mergedmeanControls)/AMP_DLB_mergedsdControls
+
+# Plotting
+AMP_DLB1 <- ggplot(AMP_DLB_merged, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+AMP_DLB2 <- AMP_DLB1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+AMP_DLB3 <- AMP_DLB2 + ylab("DLB GRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+AMP_DLB3
+
+
+# Regression
+AMP_PRS_DLB <- glm(PHENO ~ zSCORE + SEX + + AGE_DIAGNOSIS + PC1 + PC2 + PC3 + PC4 + PC5, family="binomial", data = AMP_DLB_merged)
+summary(AMP_PRS_DLB)
+
+
+################### Create table ###################
+PRS_DLB_table <- as.data.frame(matrix(ncol = 7))
+names(PRS_DLB_table) <- c("cohort","coefficient","se","pvalue","or","lower_ci","upper_ci")
+
+PRS_DLB_table[,1] <- "PROX"
+PRS_DLB_table[,2]<- summary(PROX_PRS_DLB)$coefficients[2,1]
+PRS_DLB_table[,3]<- summary(PROX_PRS_DLB)$coefficients[2,2]
+PRS_DLB_table[,4]<- summary(PROX_PRS_DLB)$coefficients[2,4]
+PRS_DLB_table[,5]<- exp(summary(PROX_PRS_DLB)$coefficients[2,1])
+PRS_DLB_table[,6]<- exp(summary(PROX_PRS_DLB)$coefficients[2,1]-1.96*summary(PROX_PRS_DLB)$coefficients[2,2])
+PRS_DLB_table[,7]<- exp(summary(PROX_PRS_DLB)$coefficients[2,1]+1.96*summary(PROX_PRS_DLB)$coefficients[2,2])
+
+
+PRS_DLB_table[2,1] <- "AMP"
+PRS_DLB_table[2,2]<- summary(AMP_PRS_DLB)$coefficients[2,1]
+PRS_DLB_table[2,3]<- summary(AMP_PRS_DLB)$coefficients[2,2]
+PRS_DLB_table[2,4]<- summary(AMP_PRS_DLB)$coefficients[2,4]
+PRS_DLB_table[2,5]<- exp(summary(AMP_PRS_DLB)$coefficients[2,1])
+PRS_DLB_table[2,6]<- exp(summary(AMP_PRS_DLB)$coefficients[2,1]-1.96*summary(AMP_PRS_DLB)$coefficients[2,2])
+PRS_DLB_table[2,7]<- exp(summary(AMP_PRS_DLB)$coefficients[2,1]+1.96*summary(AMP_PRS_DLB)$coefficients[2,2])
+
+
+################### Meta-analysis ################### 
+
+settings.meta("geneexpr")
+DLB_meta_PRS <- metagen(TE = coefficient,
+                       seTE = se,
+                       studlab = cohort,
+                       data = PRS_DLB_table,
+                       sm = "OR",
+                       fixed = TRUE,
+                       random = TRUE)
+
+
+DLB_PRS_metaanalysis <- summary(DLB_meta_PRS)
+DLB_PRS_metaanalysis
+
+## Plotting all DLB
+DLB_MERGED <- full_join(AMP_DLB_merged, PROX_DLB_merged, by = c("FID", "IID", "PHENO", "zSCORE")) %>%
+  select(FID, IID, PHENO, zSCORE)
+
+ALL_DLB1 <- ggplot(DLB_MERGED, aes(x= as.factor(PHENO), y=zSCORE, fill = as.factor(PHENO))) +
+  geom_violin(trim = FALSE)
+
+ALL_DLB2 <- ALL_DLB1 + geom_boxplot(width=0.1, fill="white" ) + theme_minimal()
+ALL_DLB3 <- ALL_DLB2 + ylab("DLB PRS") + xlab("Diagnoses") + theme(legend.position = "none") +
+  scale_x_discrete(labels=c("PD", "PDD"))
+ALL_DLB3
+
