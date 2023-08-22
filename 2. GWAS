@@ -1,22 +1,21 @@
 DIR=path/to/directory/of/cohort/binary/files
 COHORT=cohort_name
 
-#ANALYSIS
-
-
-plink2 --bfile $DIR/AMP_FINAL \
+##ANALYSIS
+plink2 --bfile $DIR/${COHORT} \
 --ci 0.95 \
---covar $DIR/AMP_COVAR.txt \
+--covar $DIR/${COHORT}_COVAR.txt \
 --covar-name SEX,AGE_DIAGNOSIS,PC1,PC2,PC3,PC4,PC5 \
 --covar-variance-standardize \
 --glm hide-covar \
---out $DIR/AMP
+--out $DIR/${COHORT}
 
-plink --bfile $DIR/AMP_FINAL \
+##META-ANLAYSIS
+#Create frequency file
+
+plink --bfile $DIR/${COHORT} \
 --freq \
---out $DIR/AMP_freq_JAN
-
-#META-ANLAYSIS
+--out $DIR/${COHORT}
 
 ##Download metal software
 #http://csg.sph.umich.edu/abecasis/Metal/download/
@@ -24,41 +23,6 @@ plink --bfile $DIR/AMP_FINAL \
 #tar xvzf Linux-metal.tar.gz 
 
 #Run script using:
-generic-metal/metal metaanalysis_script.txt
+metal metaanalysis_script.txt
 
 
-SCHEME  STDERR
-AVERAGEFREQ ON
-MINMAXFREQ ON
-CUSTOMVARIABLE TotalSampleSize
-LABEL TotalSampleSize as N 
-
-# LOAD INPUT FILES
-
-# Enable Genomic control correction
-GENOMICCONTROL ON
-# === DESCRIBE AND PROCESS THE FIRST INPUT FILE ===
-MARKER SNP
-ALLELE noneffect_allele effect_allele
-FREQ   MAF
-EFFECT beta
-STDERR se
-PVALUE Pvalue
-WEIGHT N 
-PROCESS /data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_JAN23/2-Metaanalysis/AMP_JAN_METAL.tab
-
-# === DESCRIBE AND PROCESS THE SECOND INPUT FILE ===
-MARKER SNP
-ALLELE noneffect_allele effect_allele
-FREQ   MAF
-EFFECT beta
-STDERR se
-PVALUE Pvalue
-WEIGHT N 
-PROCESS /data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_JAN23/2-Metaanalysis/PROX_JAN_METAL.tab
-
-
-OUTFILE LBAD .tbl
-ANALYZE HETEROGENEITY RANDOM
-
-QUIT
