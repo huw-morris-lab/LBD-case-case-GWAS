@@ -1,0 +1,12 @@
+#Conditional analysis was conducted in GCTA-COJO (https://yanglab.westlake.edu.cn/software/gcta/#COJO)
+#AMP-PD dataset was used as the REFERENCE file
+
+#Select relevant columns from summary statistics (SNP A1 A2 freq b se p N)
+awk '{print $1"\t"$3"\t"$2"\t"$4"\t"$8"\t"$9"\t"$10"\t"$16}' LBAD.tbl > metal.ma
+
+#Condition on SNP
+chr=chromosome_number
+snp_id=SNP on which conditional analysis is being performed
+
+gcta64 --bfile REFERENCE --cojo-file metal.ma --chr $chr --cojo-cond cond.snplist --out meta_cond_${snp_id}
+
