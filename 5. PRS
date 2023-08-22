@@ -1,11 +1,18 @@
-#Polygenic risk score 
+#Polygenic risk score was conducted with PRSice (https://choishingwan.github.io/PRSice/)
+
+DIR=/path_to_directory/
+DX = summary statistics
+COHORT=cohort_name
 
 #Summary statistics of the Kunkle et al. (2019) AD GWAS meta-analysis (stage1 + stage2), the Nalls et al. (2019) PD GWAS and the Chia et al. (2021) LBD GWAS (including DLB cases only) were used to generate AD, PD and DLB PRS, respectively.
-#SNP_IDs in the score files must match SNP nomenclature in the study dataset.
+#SNP_IDs in the score files must match SNP nomenclature in the study dataset : prepare base files
+Rscript --no-save Prep_base_file_R.R 
 
+#Run PRSice 
+#PRSice.R file can be downloaded here: https://choishingwan.github.io/PRSice/
 Rscript /home/jupyter/bin/PRSice.R \
         --prsice /home/jupyter/bin/PRSice_linux \
-         --base /home/jupyter/bin/PRS/AMP/DLB_SUMSTATS.tab \
+         --base $DIR/DX_SUMSTATS.tab \
          --pvalue P \
          --stat OR \
          --or \
@@ -14,6 +21,5 @@ Rscript /home/jupyter/bin/PRSice.R \
          --snp SNP \
          --chr CHR \
          --bp BP \
-         --target /home/jupyter/bin/AMP_NOV2022/AMP_FINAL \
-         --pheno /home/jupyter/bin/PRS1/AMP_PHENO.txt \
-         --out /home/jupyter/bin/PRS/AMP/DLB_PRS
+         --target $DIR/${COHORT} \
+         --out $DIR/${COHORT}/DX_PRS
