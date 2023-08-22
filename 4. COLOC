@@ -1,0 +1,425 @@
+---
+author: "AlejandroMC, Regina Reynolds"
+Updated by Lesley Wu
+date: "18/04/2023"
+output:
+  html_document:
+    df_print: paged
+    highlight: kate
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+---
+
+```{r}
+getwd()
+```
+
+
+
+```{r results="hide", warning=FALSE, message=FALSE}
+.libPaths("/data/kronos/kronos/acarrasco/R_libs/")
+library(colochelpR)
+library(data.table)
+library(MafDb.1Kgenomes.phase3.hs37d5)
+library(tidyverse)
+library(coloc)
+library(biomaRt)
+library(SNPlocs.Hsapiens.dbSNP144.GRCh37)
+library(DT)
+```
+
+```{r setup, include=FALSE}
+theme_rhr <-  theme_bw(base_family = "Helvetica") +
+  theme(panel.grid.major.x = element_blank(),
+        legend.position = "right",
+        strip.text = element_text(size = 8),
+        strip.text.y = element_text(angle = 90),
+        axis.text.x = element_text(size = 8, angle = 90, hjust = 1, vjust = 0.5),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(vjust = 0.6),
+        axis.title = element_text(size = 10),
+        panel.spacing = unit(0.1, "lines"))
+knitr::opts_chunk$set(echo = T, warning = F, message= F)
+```
+
+
+# Description
+
+We want to study if there is any variant among the GWAS hits that regulates the expression of any gene by using eQTLgene and PsychEncode eQTL data.
+To do so, we are going to perform a colocalization study using the coloc.ABF Bayesian approach that allows us to know whether there is any shared causal genetic variant between our quantitative trait GWAS and the preselected eQTL datasets. In addition, we will use the colochelpR package as a wrapper to do coloc.
+Of note, in colocalization analysis, we are not interested in knowing which is the causal variant, but whether there is an overlap between a given GWAS trait and any QTL df.
+We can accomplish this by testing the H4 null hypothesis that says is there is/are any SNP associated with both the progression to dementia GWAS and the regulation in expression of any gene. In other words, we want to know if any GWAS hit or set of GWAS hits are associated with progression to dementia quantitative phenotype through the disregulation on expression / alternative splicing of any gene, with a special focus on LRRP1.
+
+# Data load
+# Loading GWAS
+
+LBAD_forColoc <- fread("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/3-Liftover/METAL37.tab")
+
+
+# Getting all the info needed to perform coloc, and do some wrangling
+
+# Extract maf, reformat
+LBAD_forColoc <- LBAD_forColoc %>% 
+  dplyr::rename(beta=Effect, p.value=Pvalue, se=StdErr, maf = Freq1,A1 = Allele1, A2 = Allele2, chrpos = SNP_ID)
+
+# Get rsID to match SNP names from QTL dfs
+dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh37
+LBAD_forColoc_rsID_vbeta = colochelpR::convert_loc_to_rs(LBAD_forColoc, dbSNP=dbSNP) %>%
+  get_varbeta() %>%
+  mutate(GWAS = "LBAD")
+head(as.data.frame(LBAD_forColoc_rsID_vbeta))
+
+# Deal with biallelic SNPs
+LBAD_forColoc_rsID_vbeta <- LBAD_forColoc_rsID_vbeta %>%
+  dplyr::filter(!(duplicated(SNP) | duplicated(SNP, fromLast = TRUE))) %>% 
+  dplyr::bind_rows(LBAD_forColoc_rsID_vbeta %>% 
+                     dplyr::filter(duplicated(SNP) | duplicated(SNP, fromLast = TRUE)) %>%
+                     dplyr::group_by(SNP) %>% 
+                     dplyr::top_n(1, maf))
+# save
+fwrite(LBAD_forColoc_rsID_vbeta, "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/harmonised_LBAD.txt", quote = F, sep= "\t", col.names=T, row.names=F)
+
+
+# Getting the genes in +-1MB window
+# We need to extract all the genes within +/- 1 Mb of all significant hits in the progression to dementia GWAS.
+
+
+ensembl_gene_ids_overlapping_1Mb_window_hit <- LBAD_forColoc_rsID_vbeta %>%
+  colochelpR::get_genes_within_1Mb_of_signif_SNPs(pvalue_column="p.value",
+                                                  CHR_column="CHR",
+                                                  BP_column="BP", 
+                                                  mart=37)
+cat("total genes selected:", length(ensembl_gene_ids_overlapping_1Mb_window_hit), "\n")
+#total genes selected: 194
+
+results_path = "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC"
+results_path_GWAS_eQTL <- make_results_dir(results_path = results_path,
+                                           folder_name = "LBAD_eQTLgene")
+
+
+# Path to the GWAS we load
+GWAS_path <- "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/harmonised_LBAD.txt"
+eQTLgene_path <- "/data/kronos/kronos/lwu/mount_rd00pi/RDS/DATA/eQTLdata/eQTLGen/Full_eQTLgen_rsID.MAF.txt"
+eQTLgene <- fread(eQTLgene_path)
+
+df1_N = as.numeric(round(mean(unique(LBAD_forColoc_rsID_vbeta$TotalSampleSize))))
+
+for (index in seq_along(ensembl_gene_ids_overlapping_1Mb_window_hit)) {
+  ensembl_geneID <- ensembl_gene_ids_overlapping_1Mb_window_hit[index]
+  print(str_c(Sys.time(), " - ", index, " - ", ensembl_geneID))
+  ciseQTL_filtered <- eQTLgene %>%
+    dplyr::filter(Gene == ensembl_geneID) %>%
+    check_coloc_data_format(beta_or_pval = "pval", check_maf = TRUE) %>%
+    dplyr::filter(!duplicated(SNP))
+  
+  df2_N = as.numeric(round(mean(unique(ciseQTL_filtered$NrSamples))))
+
+
+# Subset from which I Calculate the proportion cases mean.
+#df_subset <- LBAD_forColoc_rsID_vbeta %>% dplyr::filter(SNP %in% ciseQTL_filtered$SNP) 
+  
+coloc_results_annotated <- colochelpR::get_coloc_results(df1 = LBAD_forColoc_rsID_vbeta,
+                                                           df2 = ciseQTL_filtered, 
+                                                           df1_type = "quant",
+                                                           df2_type="quant",
+                                                           df1_beta_or_pval="beta",
+                                                           df2_beta_or_pval="pval", 
+                                                           df1_N = df1_N,
+                                                           df2_N = df2_N,
+                                                           annotate_signif_SNP_df1_df2 = T,
+                                                           key_cols = c("GWAS_1", "eQTL_2", 
+                                                                        "Gene_2"),
+                                                           df_1_name = "GWAS", 
+                                                           df_2_name = "eQTL",
+                                                           df1_path = GWAS_path,
+                                                           df2_path=eQTLgene_path,
+                                                           p12 = 1e-5)
+  colochelpR::save_coloc_results(coloc_results_annotated, 
+                                 results_dir_path=results_path_GWAS_eQTL)
+}
+
+
+
+results_path = "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC"
+results_path_GWAS_eQTL <- make_results_dir(results_path = results_path,
+                                           folder_name = "LBAD_psychEncode")
+# Path to the GWAS we load
+
+GWAS_path <- "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/harmonised_LBAD.txt"
+psychEnc_path <- "/data/kronos/kronos/lwu/mount_rd00pi/RDS/DATA/eQTLdata/PsychEncode/Full_hg19_cis-eQTL_rsID_MAF.txt"
+psychEncode <- fread(psychEnc_path)
+df1_N = as.numeric(round(mean(unique(LBAD_forColoc_rsID_vbeta$TotalSampleSize))))
+for (index in seq_along(ensembl_gene_ids_overlapping_1Mb_window_hit)) {
+  ensembl_geneID <- ensembl_gene_ids_overlapping_1Mb_window_hit[index]
+  print(str_c(Sys.time(), " - ", index, " - ", ensembl_geneID))
+  
+  ciseQTL_filtered <- psychEncode %>%
+    dplyr::filter(Gene == ensembl_geneID) %>%
+    check_coloc_data_format(beta_or_pval = "pval", check_maf = TRUE) %>%
+    dplyr::filter(!duplicated(SNP)) %>%
+    dplyr::filter((maf > 0) & (maf < 1))
+
+  ciseQTL_filtered$maf <- as.numeric(ciseQTL_filtered$maf)
+  
+  if (dim(ciseQTL_filtered)[1] == 0) {
+    next
+  }
+
+  df2_N = mean(ciseQTL_filtered$number_of_SNPs_tested, na.rm = T)
+  
+  # Subset from which I Calculate the proportion cases mean.
+  #df_subset <- LBAD_forColoc_rsID_vbeta %>% dplyr::filter(SNP %in% ciseQTL_filtered$SNP) 
+  coloc_results_annotated <- colochelpR::get_coloc_results(df1 = LBAD_forColoc_rsID_vbeta,
+                                                           df2 = ciseQTL_filtered, 
+                                                           df1_type = "quant",
+                                                           df2_type="quant",
+                                                           df1_beta_or_pval="beta",
+                                                           df2_beta_or_pval="pval", 
+                                                           df1_N = df1_N,
+                                                           df2_N = df2_N,
+                                                           annotate_signif_SNP_df1_df2 = T,
+                                                           key_cols = c("GWAS_1", "eQTL_2", 
+                                                                        "Gene_2"),
+                                                           df_1_name = "GWAS", 
+                                                           df_2_name = "eQTL",
+                                                           df1_path = GWAS_path,
+                                                           df2_path=psychEnc_path,
+                                                           p12 = 1e-5)
+  colochelpR::save_coloc_results(coloc_results_annotated, 
+                                 results_dir_path=results_path_GWAS_eQTL)
+}
+
+
+# Results 
+
+#Coloc calculates the posterior probability (PP) for 5 different hypotheses:
+ # - H0: No association with either trait.
+# - H1: Association with trait 1, not with trait 2.
+# - H2: Association with trait 2, not with trait 1.
+# - H3: Association with trait 1 and 2, two independent SNPs.
+# - H4: Association with trait 1 and trait 2, one shared SNP.
+
+# We will set up a PP.H4 > 0.9 to consider the presence of a shared SNP between traits
+
+results_eQTL <- merge_coloc_summaries("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/LBAD_eQTLgene",
+                                      add_signif_SNP = F, recursive = T, pattern = ".rda")
+
+#mart = useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+ensembl <- useEnsembl(biomart = "ensembl",
+                      dataset = "hsapiens_gene_ensembl",mirror = "www")
+
+mapping <- getBM(attributes = c("hgnc_symbol", "ensembl_gene_id"),
+                 filters = "ensembl_gene_id",
+                 values = results_eQTL$Gene_2,
+                 mart = ensembl)
+
+results_eQTL <- results_eQTL %>% 
+  inner_join(mapping,by = c("Gene_2" = "ensembl_gene_id")) %>%
+  rename(HGNC = hgnc_symbol) %>%
+  relocate(HGNC, .after = Gene_2)
+
+# SHowing the whole table
+datatable(results_eQTL, rownames = FALSE,
+          options = list(scrollX = TRUE),
+          class = 'white-space: nowrap')
+
+results_psychEncode <- merge_coloc_summaries("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/LBAD_psychEncode",
+                                             add_signif_SNP = F, recursive = T, pattern = ".rda")
+
+#mart = useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+ensembl <- useEnsembl(biomart = "ensembl",
+                      dataset = "hsapiens_gene_ensembl",mirror = "useast")
+
+mapping <- getBM(attributes = c("hgnc_symbol", "ensembl_gene_id"),
+                 filters = "ensembl_gene_id",
+                 values = results_psychEncode$Gene_2,
+                 mart = ensembl)
+
+results_psychEncode <- results_psychEncode %>% 
+  inner_join(mapping,by = c("Gene_2" = "ensembl_gene_id")) %>%
+  rename(HGNC = hgnc_symbol) %>%
+  relocate(HGNC, .after = Gene_2)
+
+# Showing the results with PP4 > 0.9 
+results_psychEncode %>% 
+  DT::datatable(rownames = FALSE,
+                options = list(scrollX = TRUE),
+                class = 'white-space: nowrap')
+
+fwrite(results_psychEncode, "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/psychEncode_results.txt", quote = F, sep= "\t", col.names=T, row.names=F)
+
+## Is there any region with an H4 pp > 0.9 when doing coloc between eQTLgen and GWAS?
+
+# Showing the results with PP4 > 0.9
+results_eQTL %>% dplyr::filter(PP.H4.abf > 0.9) %>% 
+  DT::datatable(rownames = FALSE,
+                options = list(scrollX = TRUE),
+                class = 'white-space: nowrap')
+
+fwrite(results_eQTL, "/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/eQTL_results.txt", quote = F, sep= "\t", col.names=T, row.names=F)
+
+## Is there any region with an H4 pp > 0.9 when doing coloc between psychEncode and GWAS?
+
+
+# Showing the results with PP4 > 0.9 
+results_psychEncode %>% dplyr::filter(PP.H4.abf > 0.9) %>% 
+  DT::datatable(rownames = FALSE,
+                options = list(scrollX = TRUE),
+                class = 'white-space: nowrap')
+
+
+
+######### Ploting ###########
+library(ggpubr)
+
+# Loading function for plotting
+plot_coloc_hits <- function(coloc_hits, eQTL_GWAS_to_plot, facet_labels = NULL, figure_labels = NULL, theme_base_size = 10) {
+  
+  plot_list <- vector(mode = "list", length = length(coloc_hits))
+  # Setting facet labels
+  if(is.null(facet_labels)){
+    
+    labels <- c(pvalue_gwas = "pvalue_gwas", pvalue_eqtl = "pvalue_eqtl")
+    
+  } else{
+    
+    labels <- facet_labels 
+    
+  }
+  
+  # Setting figure labels
+  if(is.null(figure_labels)){
+    
+    figure_labels <- NULL
+    print(str_c("No figure labels provided, so no figure labels assigned."))
+    
+  } else{
+    
+    figure_labels <- figure_labels 
+    
+  }
+  
+  # Figure loop
+  for(i in 1:length(coloc_hits)){
+    
+    chr <- 
+      eQTL_GWAS_to_plot %>% 
+      dplyr::filter(gene %in% coloc_hits[i]) %>% 
+      .[["chr"]] %>% 
+      unique
+    
+    plot_list[[i]] <- 
+      eQTL_GWAS_to_plot %>% 
+      dplyr::filter(gene %in% coloc_hits[i]) %>% 
+      ggplot(aes(x = pos_mb, y = log_pval)) +
+      geom_point(size = 0.7, alpha = 0.3) +
+      facet_wrap(vars(Dataset, hgnc_symbol), ncol = 1, scale = "free", labeller=labeller(Dataset = labels)) +
+      labs(x = str_c("Chromosome ", chr, " position (Mb)"), y = "-log10(p-value)") +
+      theme_bw(base_size = theme_base_size) +
+      theme(panel.grid.major.y = element_blank(),
+            panel.grid.minor.y = element_blank())
+    
+  }
+  
+  ggpubr::ggarrange(plotlist = plot_list, 
+                    # ncol = 2,
+                    labels = figure_labels, 
+                    align = "hv",
+                    common.legend = TRUE, 
+                    legend = "none")
+  
+}
+
+# Data loading / wrangling
+
+PsychEncode <- fread("/data/kronos/kronos/lwu/mount_rd00pi/RDS/DATA/eQTLdata/PsychEncode/Full_hg19_cis-eQTL_rsID_MAF.txt")
+tQTL = fread("/data/kronos/kronos/lwu/mount_rd00pi/RDS/DATA/eQTLdata/PsychEncode/DER-10c_hg19_tQTL.all.txt")
+iQTL = fread("/data/kronos/kronos/lwu/mount_rd00pi/RDS/DATA/eQTLdata/PsychEncode/DER-10a_hg19_isoQTL.significant.txt")
+gwas <- fread("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/harmonised_LBAD.txt")
+
+
+
+# Minor processing for tQTLs and iQTLs
+tQTL$transcript_id = gsub("\\..*", "", tQTL$transcript_id)
+iQTL$transcript_id = gsub("\\..*", "", iQTL$transcript_id)
+
+# Loading the coloc results from GWAS-PsychEncode
+
+results_psychEncode <- merge_coloc_summaries("/data/kronos/kronos/lwu/mount_rd00pi/RDS/Lesley/LBAD_NOV22/4-COLOC/LBAD_psychEncode/",
+                                             add_signif_SNP = F, recursive = T, pattern = ".rda")
+
+mart = useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") 
+mapping <- getBM(attributes = c("hgnc_symbol", "ensembl_gene_id"),  
+                 filters = "ensembl_gene_id",  
+                 values = results_psychEncode$Gene_2,  
+                 mart = mart)  
+results_psychEncode <- results_psychEncode %>% 
+  inner_join(mapping,by = c("Gene_2" = "ensembl_gene_id")) %>% relocate(hgnc_symbol, .after = Gene_2)
+
+
+# Getting loci of interest over PsychEncode eQTL and tQTL df 
+coloc_ens <- results_psychEncode %>% dplyr::filter(hgnc_symbol == "LRRK2")
+
+# We filter the PsychEncode eQTL data for GENE
+PsychEncode_filtered_eQTL <- PsychEncode %>% dplyr::filter(Gene %in% coloc_ens$Gene_2) 
+
+# Same for PsychEncode tQTL 
+# Given the transcript id, we take the HGNC symbol and the ensembl gene_id
+ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
+mapping <- getBM(attributes = c("ensembl_gene_id", "ensembl_transcript_id", "hgnc_symbol"),
+                 filters = "ensembl_gene_id", values = "ENSG00000145335",   
+                 mart = ensembl)
+
+
+PsychEncode_filtered_tQTL  <- tQTL %>%
+  dplyr::filter(transcript_id %in% mapping$ensembl_transcript_id)
+PsychEncode_filtered_tQTL$hgnc_symbol = "GENE"
+PsychEncode_filtered_tQTL$Gene = "ENSG00000145335"
+
+
+
+# Now we join GWAS df with eQTL and tQTL dfs
+eQTL_Psych_GWAS_joined <- setNames(PsychEncode_filtered_eQTL %>% group_split(Gene), PsychEncode_filtered_eQTL %>% .[["Gene"]] %>% unique() %>% sort())  %>% 
+  lapply(., function(eQTL_gene_df) { colochelpR::join_coloc_datasets(df1 = gwas %>% dplyr::filter(!duplicated(SNP)), df2 = eQTL_gene_df, harmonise = F ) })
+dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh37
+
+#PsychEncode_filtered_tQTL <- PsychEncode_filtered_tQTL %>% separate(SNP_id, into=c("CHR","BP"), remove=F) 
+#PsychEncode_filtered_tQTL = PsychEncode_filtered_tQTL %>% dplyr::select(-strand) %>% convert_loc_to_rs(., dbSNP = dbSNP)
+
+#tQTL_Psych_GWAS_joined <- setNames(PsychEncode_filtered_tQTL %>% group_split(Gene), PsychEncode_filtered_tQTL %>% .[["Gene"]] %>% unique() %>% sort())  %>% 
+  #lapply(., function(eQTL_gene_df) { colochelpR::join_coloc_datasets(df1 = gwas %>% dplyr::filter(!duplicated(SNP)), df2 = eQTL_gene_df, harmonise = F ) })
+
+#Then we can plot it
+
+eQTL_GWAS <- eQTL_Psych_GWAS_joined %>% qdapTools::list_df2df() %>% 
+  dplyr::select(SNP,chr = CHR_1, pos = BP_1, gene = Gene_2, pvalue_gwas = p.value_1, pvalue_eqtl = p.value_2) %>%  
+  dplyr::inner_join(results_psychEncode %>% dplyr::select(gene = Gene_2, hgnc_symbol)) %>%  
+  tidyr::gather(key = "Dataset", value = "p.value", -SNP, -gene, -hgnc_symbol, -chr, -pos) %>% 
+  dplyr::mutate(pos_mb = as.numeric(pos) / 1000000, log_pval = -log10(p.value)) 
+
+#tQTL_GWAS = tQTL_Psych_GWAS_joined %>% qdapTools::list_df2df() %>% dplyr::select(SNP, 
+                                                                                 chr = CHR_1, pos = BP_1, gene = Gene_2, pvalue_gwas = p.value_1, pvalue_eqtl = nominal_pval_2) %>%  
+  dplyr::inner_join(results_psychEncode %>% dplyr::select(gene = Gene_2, hgnc_symbol)) %>%  # I should not do this inner joing for results_psychEncode. This res are eQTL-GWAS
+  tidyr::gather(key = "Dataset", value = "p.value", -SNP, -gene, -hgnc_symbol, -chr, -pos) %>% 
+  dplyr::mutate(pos_mb = as.numeric(pos) / 1000000, log_pval = -log10(p.value))
+
+plot_eQTL_GWAS <- plot_coloc_hits(coloc_hits = coloc_ens[["Gene_2"]], 
+                                  eQTL_GWAS_to_plot = eQTL_GWAS, 
+                                  facet_labels = c(pvalue_gwas = "toDementia_GWAS", 
+                                                   pvalue_eqtl="eQTL_PsychEncode")) 
+
+plot_tQTL_GWAS <- plot_coloc_hits(coloc_hits = coloc_ens[["Gene_2"]], 
+                                  eQTL_GWAS_to_plot = tQTL_GWAS, 
+                                  facet_labels = c(pvalue_gwas = "toDementia_GWAS", 
+                                                   pvalue_eqtl="tQTL_PsychEncode")) 
+pdf(file = "PLOTS/plot_eQTLGWAS.pdf", width = 8, height = 6)  
+plot_eQTL_GWAS
+dev.off()
+pdf(file = "PLOTS/plots_tQTLGWAS.pdf", width = 8, height = 6)  
+plot_tQTL_GWAS
+dev.off()
+
+plot_eQTL_GWAS
+plot_tQTL_GWAS
